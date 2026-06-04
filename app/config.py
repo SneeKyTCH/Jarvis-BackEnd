@@ -53,7 +53,12 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     # ─── CORS ───
-    cors_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
+    cors_origins: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "https://jarvis-web-dun-five.vercel.app",
+        "https://*.vercel.app",
+    ]
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = ["*"]
     cors_allow_headers: List[str] = ["*"]
