@@ -77,23 +77,25 @@ class VoiceInfo(BaseModel):
 # ─── Endpoints ───
 
 @router.post("/debug-upload")
-async def debug_upload(
-    audio_file: UploadFile = File(...),
-):
+async def debug_upload(file: UploadFile = File(...)):
     """
     DEBUG: Test if file upload works
     """
-    contents = await audio_file.read()
-    logger.info(f"DEBUG: Received file: {audio_file.filename}")
-    logger.info(f"DEBUG: File size: {len(contents)} bytes")
-    logger.info(f"DEBUG: Content-Type: {audio_file.content_type}")
+    try:
+        contents = await file.read()
+        logger.info(f"DEBUG: Received file: {file.filename}")
+        logger.info(f"DEBUG: File size: {len(contents)} bytes")
+        logger.info(f"DEBUG: Content-Type: {file.content_type}")
 
-    return {
-        "received": True,
-        "filename": audio_file.filename,
-        "size": len(contents),
-        "content_type": audio_file.content_type,
-    }
+        return {
+            "received": True,
+            "filename": file.filename,
+            "size": len(contents),
+            "content_type": file.content_type,
+        }
+    except Exception as e:
+        logger.error(f"DEBUG Upload error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/recognize", response_model=SpeechRecognitionResponse)
@@ -235,7 +237,7 @@ async def download_audio(audio_file_id: str):
 
 @router.post("/transcribe")
 async def transcribe_with_language_detection(
-    audio_file: UploadFile = File(...),
+    file: UploadFile = File(...),
     authorization: Optional[str] = Header(None),
 ):
     """
@@ -248,7 +250,7 @@ async def transcribe_with_language_detection(
     Returns: Transcribed text with detected language and confidence
     """
     try:
-        logger.info(f"Transcribe request: {audio_file.filename} (size: {audio_file.size})")
+        logger.info(f"Transcribe request: {file.filename} (size: {file.size})")
 
         # Extract and validate token (optional)
         user_id = None
@@ -268,7 +270,7 @@ async def transcribe_with_language_detection(
                     logger.warning(f"Token validation failed: {str(e)}")
 
         # Validate file size
-        contents = await audio_file.read()
+        contents = await file.read()
         logger.info(f"Audio file size: {len(contents)} bytes")
 
         if len(contents) == 0:
@@ -278,7 +280,7 @@ async def transcribe_with_language_detection(
             raise HTTPException(status_code=413, detail="File too large (max 25MB)")
 
         # Save to temporary file
-        suffix = "." + (audio_file.filename.split(".")[-1] if audio_file.filename and "." in audio_file.filename else "webm")
+        suffix = "." + (file.filename.split(".")[-1] if file.filename and "." in file.filename else "webm")
         logger.info(f"Using file suffix: {suffix}")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
