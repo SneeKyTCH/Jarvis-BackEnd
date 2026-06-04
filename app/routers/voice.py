@@ -392,10 +392,13 @@ async def detect_language_and_transcribe(
         "confidence": 0.95
     }
     """
-    try:
-        import azure.cognitiveservices.speech as speechsdk
-        import re
+    import azure.cognitiveservices.speech as speechsdk
+    import re
+    import asyncio
 
+    audio_file_path = None
+
+    try:
         logger.info(f"Auto-detect transcribe: {file.filename}")
 
         # Get Azure credentials
@@ -411,21 +414,21 @@ async def detect_language_and_transcribe(
         if not audio_data:
             raise HTTPException(status_code=400, detail="Audio file is empty")
 
-        # Create Azure Speech recognizer with audio from memory
-        import io
-        import asyncio
+        logger.info(f"Audio data size: {len(audio_data)} bytes")
 
+        # Save to temporary file (more reliable than in-memory stream)
+        suffix = "." + (file.filename.split(".")[-1] if file.filename and "." in file.filename else "wav")
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(audio_data)
+            audio_file_path = tmp.name
+            logger.info(f"Saved audio to temp file: {audio_file_path} (suffix: {suffix})")
+
+        # Setup Azure Speech recognizer
         speech_config = speechsdk.SpeechConfig(subscription=api_key, region=region)
+        audio_config = speechsdk.AudioConfig(filename=audio_file_path)
+        logger.info(f"Created Azure speech config from file: {audio_file_path}")
 
-        # Create in-memory audio from the blob
-        audio_stream = speechsdk.audio.PushAudioInputStream()
-        audio_stream.write(audio_data)
-        audio_stream.close()
-
-        # Create audio config from the stream
-        audio_config = speechsdk.AudioConfig(stream=audio_stream)
-
-        # Create speech recognizer
         speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
         logger.info("Starting Azure speech recognition...")
@@ -438,30 +441,27 @@ async def detect_language_and_transcribe(
             transcribed_text = result.text
             logger.info(f"Recognized: {transcribed_text}")
         elif result.reason == speechsdk.ResultReason.NoMatch:
-            logger.warning("No speech detected")
-            raise HTTPException(status_code=400, detail="No speech detected")
+            logger.warning(f"No speech detected in audio")
+            raise HTTPException(status_code=400, detail="No speech detected in audio")
         elif result.reason == speechsdk.ResultReason.Canceled:
             cancellation = result.cancellation_details
-            logger.error(f"Speech Recognition canceled: {cancellation.reason} - {cancellation.error_details}")
-            raise HTTPException(status_code=500, detail=f"Azure error: {cancellation.error_details}")
+            error_msg = f"{cancellation.reason} - {cancellation.error_details}"
+            logger.error(f"Speech Recognition canceled: {error_msg}")
+            raise HTTPException(status_code=400, detail=f"Audio processing failed: {cancellation.error_details}")
 
-        # Detect language from transcribed text using simple heuristics
+        # Detect language from transcribed text using character patterns
         detected_lang = "en"
         language_name = "English"
 
-        # Check for Romanian characters (ă â î ș ț)
         if re.search(r'[ăâîșț]', transcribed_text, re.IGNORECASE):
             detected_lang = "ro"
             language_name = "Română"
-        # Check for Spanish characters (ñ)
         elif re.search(r'[ñ]', transcribed_text, re.IGNORECASE):
             detected_lang = "es"
             language_name = "Español"
-        # Check for French characters (é è ê à ù ç)
         elif re.search(r'[éèêàùç]', transcribed_text, re.IGNORECASE):
             detected_lang = "fr"
             language_name = "Français"
-        # Check for German characters (ä ö ü ß)
         elif re.search(r'[äöüß]', transcribed_text, re.IGNORECASE):
             detected_lang = "de"
             language_name = "Deutsch"
@@ -479,7 +479,12 @@ async def detect_language_and_transcribe(
         raise
     except Exception as e:
         logger.error(f"Auto-detect transcription error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)[:100]}")
+        raise HTTPException(status_code=400, detail=f"Transcription failed: {str(e)[:100]}")
+    finally:
+        # Clean up temp file
+        if audio_file_path:
+            Path(audio_file_path).unlink(missing_ok=True)
+            logger.info(f"Cleaned up temp file: {audio_file_path}")
 
 
 @router.get("/voices", response_model=list[VoiceInfo])
