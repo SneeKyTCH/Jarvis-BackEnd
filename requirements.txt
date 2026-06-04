@@ -25,6 +25,7 @@ SpeechRecognition>=3.10.0
 sounddevice>=0.4.6
 scipy>=1.11.0
 azure-cognitiveservices-speech>=1.31.0
+pydub>=0.25.1
 
 # Web Search
 duckduckgo-search>=3.9.0

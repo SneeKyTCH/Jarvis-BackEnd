@@ -416,13 +416,32 @@ async def detect_language_and_transcribe(
 
         logger.info(f"Audio data size: {len(audio_data)} bytes")
 
-        # Save to temporary file (more reliable than in-memory stream)
-        suffix = "." + (file.filename.split(".")[-1] if file.filename and "." in file.filename else "wav")
+        # Save to temporary file
+        original_suffix = "." + (file.filename.split(".")[-1] if file.filename and "." in file.filename else "webm")
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=original_suffix) as tmp:
             tmp.write(audio_data)
             audio_file_path = tmp.name
-            logger.info(f"Saved audio to temp file: {audio_file_path} (suffix: {suffix})")
+            logger.info(f"Saved audio to temp file: {audio_file_path} (format: {original_suffix})")
+
+        # Convert WebM to WAV if needed
+        if original_suffix.lower() in ['.webm', '.mp4', '.m4a']:
+            logger.info(f"Converting {original_suffix} to WAV for Azure compatibility...")
+            try:
+                from pydub import AudioSegment
+
+                # Load audio file and export as WAV
+                audio = AudioSegment.from_file(audio_file_path)
+                wav_path = audio_file_path.replace(original_suffix, '.wav')
+                audio.export(wav_path, format='wav')
+
+                logger.info(f"Converted to WAV: {wav_path}")
+
+                # Clean up original and use WAV
+                Path(audio_file_path).unlink(missing_ok=True)
+                audio_file_path = wav_path
+            except Exception as e:
+                logger.warning(f"Audio format conversion failed: {str(e)}, attempting with original format")
 
         # Setup Azure Speech recognizer
         speech_config = speechsdk.SpeechConfig(subscription=api_key, region=region)
