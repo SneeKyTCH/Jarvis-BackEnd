@@ -411,11 +411,12 @@ async def detect_language_and_transcribe(
             raise HTTPException(status_code=400, detail="Audio file is empty")
 
         # Create Azure Speech recognizer with audio from memory
+        import io
+        import asyncio
+
         speech_config = speechsdk.SpeechConfig(subscription=api_key, region=region)
-        audio_config = speechsdk.AudioConfig(use_default_microphone=False)
 
         # Create in-memory audio from the blob
-        import io
         audio_stream = speechsdk.audio.PushAudioInputStream()
         audio_stream.write(audio_data)
         audio_stream.close()
@@ -427,7 +428,10 @@ async def detect_language_and_transcribe(
         speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
         logger.info("Starting Azure speech recognition...")
-        result = speech_recognizer.recognize_once()
+
+        # Run sync Azure call in thread pool to avoid blocking async
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, speech_recognizer.recognize_once)
 
         if result.reason == speechsdk.ResultReason.RecognizedSpeech:
             transcribed_text = result.text
