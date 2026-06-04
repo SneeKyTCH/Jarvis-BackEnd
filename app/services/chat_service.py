@@ -16,19 +16,24 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # Initialize AI clients
+claude_client = None
+openai_client = None
+
 try:
     from anthropic import Anthropic
-    claude_client = Anthropic(api_key=settings.anthropic_api_key) if settings.anthropic_api_key else None
+    if settings.anthropic_api_key:
+        claude_client = Anthropic(api_key=settings.anthropic_api_key)
+        logger.info("Claude API client initialized")
 except Exception as e:
     logger.warning(f"Claude API not available: {str(e)}")
-    claude_client = None
 
 try:
     from openai import OpenAI
-    openai_client = OpenAI(api_key=settings.openai_api_key) if settings.openai_api_key else None
+    if settings.openai_api_key:
+        openai_client = OpenAI(api_key=settings.openai_api_key)
+        logger.info("OpenAI API client initialized")
 except Exception as e:
     logger.warning(f"OpenAI API not available: {str(e)}")
-    openai_client = None
 
 
 class ChatService:
@@ -117,23 +122,28 @@ class ChatService:
             history = [{"role": msg.role, "content": msg.content} for msg in messages]
             history.append({"role": "user", "content": message_text})
 
-            # Get AI response - try Claude first, fallback to OpenAI
+            # Get AI response - try OpenAI first, fallback to Claude
             ai_response = None
-            if claude_client:
-                try:
-                    ai_response = ChatService._claude_response(history)
-                except Exception as e:
-                    logger.warning(f"Claude API failed: {str(e)}, falling back to OpenAI")
 
-            if not ai_response and openai_client:
+            # Try OpenAI first
+            if openai_client:
                 try:
+                    logger.info("Using OpenAI API")
                     ai_response = ChatService._openai_response(history)
                 except Exception as e:
-                    logger.error(f"OpenAI API failed: {str(e)}")
+                    logger.warning(f"OpenAI API failed: {str(e)}, falling back to Claude")
+
+            # Fallback to Claude
+            if not ai_response and claude_client:
+                try:
+                    logger.info("Using Claude API (fallback)")
+                    ai_response = ChatService._claude_response(history)
+                except Exception as e:
+                    logger.error(f"Claude API failed: {str(e)}")
                     return {"error": f"AI service error: {str(e)}"}
 
             if not ai_response:
-                return {"error": "No AI service available"}
+                return {"error": "No AI service available or configured"}
 
             # Save user message
             user_msg = Message(
