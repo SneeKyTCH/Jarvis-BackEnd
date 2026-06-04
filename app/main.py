@@ -89,6 +89,7 @@ def create_app() -> FastAPI:
             "https://jarvis-web-git-main-sneekytchs-projects.vercel.app",
             "https://jarvis-ogxoa19lf-sneekytchs-projects.vercel.app",
             "https://jarvis-e5ulpzciu-sneekytchs-projects.vercel.app",
+            "https://jarvis-b7rf2kgs3-sneekytchs-projects.vercel.app",
         ],
         allow_credentials=True,
         allow_methods=["*"],
