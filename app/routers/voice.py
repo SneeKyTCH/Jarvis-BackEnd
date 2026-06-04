@@ -383,7 +383,7 @@ async def detect_language_and_transcribe(
     authorization: Optional[str] = Header(None),
 ):
     """
-    Transcribe audio with AUTOMATIC language detection using Azure Speech Services
+    Transcribe audio with AUTOMATIC language detection using OpenAI Whisper
 
     Returns: {
         "text": "transcribed text",
@@ -392,7 +392,6 @@ async def detect_language_and_transcribe(
         "confidence": 0.95
     }
     """
-    import azure.cognitiveservices.speech as speechsdk
     import re
     import asyncio
 
@@ -401,13 +400,10 @@ async def detect_language_and_transcribe(
     try:
         logger.info(f"Auto-detect transcribe: {file.filename}")
 
-        # Get Azure credentials
-        api_key = settings.azure_speech_key
-        region = settings.azure_speech_region
-
-        if not api_key or not region:
-            logger.error("Azure Speech API key or region not configured")
-            raise HTTPException(status_code=500, detail="Azure Speech not configured")
+        # Verify OpenAI API key is configured
+        if not settings.openai_api_key:
+            logger.error("OpenAI API key not configured")
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
 
         # Read audio file
         audio_data = await file.read()
@@ -417,56 +413,28 @@ async def detect_language_and_transcribe(
         logger.info(f"Audio data size: {len(audio_data)} bytes")
 
         # Save to temporary file
-        original_suffix = "." + (file.filename.split(".")[-1] if file.filename and "." in file.filename else "webm")
+        suffix = "." + (file.filename.split(".")[-1] if file.filename and "." in file.filename else "webm")
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=original_suffix) as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(audio_data)
             audio_file_path = tmp.name
-            logger.info(f"Saved audio to temp file: {audio_file_path} (format: {original_suffix})")
+            logger.info(f"Saved audio to temp file: {audio_file_path} (format: {suffix})")
 
-        # Convert WebM to WAV if needed
-        if original_suffix.lower() in ['.webm', '.mp4', '.m4a']:
-            logger.info(f"Converting {original_suffix} to WAV for Azure compatibility...")
-            try:
-                from pydub import AudioSegment
-
-                # Load audio file and export as WAV
-                audio = AudioSegment.from_file(audio_file_path)
-                wav_path = audio_file_path.replace(original_suffix, '.wav')
-                audio.export(wav_path, format='wav')
-
-                logger.info(f"Converted to WAV: {wav_path}")
-
-                # Clean up original and use WAV
-                Path(audio_file_path).unlink(missing_ok=True)
-                audio_file_path = wav_path
-            except Exception as e:
-                logger.warning(f"Audio format conversion failed: {str(e)}, attempting with original format")
-
-        # Setup Azure Speech recognizer
-        speech_config = speechsdk.SpeechConfig(subscription=api_key, region=region)
-        audio_config = speechsdk.AudioConfig(filename=audio_file_path)
-        logger.info(f"Created Azure speech config from file: {audio_file_path}")
-
-        speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
-
-        logger.info("Starting Azure speech recognition...")
-
-        # Run sync Azure call in thread pool to avoid blocking async
+        # Use OpenAI Whisper for transcription (handles all formats, auto language detection)
+        logger.info("Starting OpenAI Whisper transcription...")
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, speech_recognizer.recognize_once)
+        transcribed_text, confidence = await loop.run_in_executor(
+            None,
+            lambda: VoiceService.recognize_speech(
+                audio_file_path=audio_file_path,
+                language="en",
+                user_id=None,
+            )
+        )
 
-        if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            transcribed_text = result.text
-            logger.info(f"Recognized: {transcribed_text}")
-        elif result.reason == speechsdk.ResultReason.NoMatch:
-            logger.warning(f"No speech detected in audio")
+        if not transcribed_text:
+            logger.warning(f"No speech detected or transcription failed")
             raise HTTPException(status_code=400, detail="No speech detected in audio")
-        elif result.reason == speechsdk.ResultReason.Canceled:
-            cancellation = result.cancellation_details
-            error_msg = f"{cancellation.reason} - {cancellation.error_details}"
-            logger.error(f"Speech Recognition canceled: {error_msg}")
-            raise HTTPException(status_code=400, detail=f"Audio processing failed: {cancellation.error_details}")
 
         # Detect language from transcribed text using character patterns
         detected_lang = "en"
