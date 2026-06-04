@@ -81,8 +81,15 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_origin_regex=r"https://.*\.vercel\.app.*",
+        allow_origins=[
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "http://localhost:8081",
+            "https://jarvis-web-dun-five.vercel.app",
+            "https://jarvis-web-git-main-sneekytchs-projects.vercel.app",
+            "https://jarvis-ogxoa19lf-sneekytchs-projects.vercel.app",
+            "https://jarvis-e5ulpzciu-sneekytchs-projects.vercel.app",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
