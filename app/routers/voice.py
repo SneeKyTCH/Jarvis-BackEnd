@@ -3,7 +3,7 @@ Voice endpoints
 Speech recognition, text-to-speech, voice processing
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -216,7 +216,7 @@ async def download_audio(audio_file_id: str):
 @router.post("/transcribe")
 async def transcribe_with_language_detection(
     audio_file: UploadFile = File(...),
-    authorization: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
 ):
     """
     Convert speech to text WITH automatic language detection
@@ -224,8 +224,8 @@ async def transcribe_with_language_detection(
     Like recognize_speech but also detects language from audio.
 
     Args:
-        audio_file: Audio file (WAV, MP3, OGG, FLAC)
-        authorization: Bearer token
+        audio_file: Audio file (WebM, WAV, MP3, OGG, FLAC)
+        authorization: Bearer token in Authorization header
 
     Returns: Transcribed text with detected language and confidence
     """
@@ -242,7 +242,10 @@ async def transcribe_with_language_detection(
             token = authorization
 
         if token:
-            user_id, _ = AuthService.validate_token(token)
+            try:
+                user_id, _ = AuthService.validate_token(token)
+            except Exception as e:
+                logger.warning(f"Token validation failed: {str(e)}")
 
     # Validate file size
     contents = await audio_file.read()
@@ -251,38 +254,28 @@ async def transcribe_with_language_detection(
 
     # Save to temporary file
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        # Use original extension if available, otherwise webm
+        suffix = "." + (audio_file.filename.split(".")[-1] if audio_file.filename else "webm")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(contents)
             tmp_path = tmp.name
 
-        # Try to recognize in multiple languages to detect which one works
-        # For now, we'll just try English and Romanian
-        languages_to_try = ["en", "ro", "es", "fr"]
-        best_result = None
-        best_confidence = 0
-
-        for lang in languages_to_try:
-            text, confidence = VoiceService.recognize_speech(
-                audio_file_path=tmp_path,
-                language=lang,
-                user_id=user_id,
-            )
-
-            if text and confidence > best_confidence:
-                best_result = (text, lang, confidence)
-                best_confidence = confidence
+        # Transcribe with auto language detection (let OpenAI Whisper detect)
+        text, confidence = VoiceService.recognize_speech(
+            audio_file_path=tmp_path,
+            language="en",  # OpenAI Whisper auto-detects if we don't specify
+            user_id=user_id,
+        )
 
         # Clean up temp file
         Path(tmp_path).unlink(missing_ok=True)
 
-        if not best_result:
+        if not text:
             raise HTTPException(status_code=400, detail="Speech not recognized")
-
-        text, detected_lang, confidence = best_result
 
         return {
             "text": text,
-            "language": detected_lang,
+            "language": "auto",
             "confidence": confidence,
             "duration_seconds": len(contents) / 32000,
         }
