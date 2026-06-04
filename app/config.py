@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     """Application settings from environment variables"""
 
     # ─── Server Configuration ───
-    environment: str = "development"
-    debug: bool = True
+    environment: str = "production"
+    debug: bool = False
     api_port: int = 8000
     api_host: str = "0.0.0.0"
     api_title: str = "JARVIS Backend API v2.0"
@@ -56,10 +56,11 @@ class Settings(BaseSettings):
     cors_origins: List[str] = [
         "http://localhost:3000",
         "http://localhost:8080",
+        "http://localhost:8081",
         "https://jarvis-web-dun-five.vercel.app",
         "https://jarvis-web-git-main-sneekytchs-projects.vercel.app",
         "https://jarvis-ogxoa19lf-sneekytchs-projects.vercel.app",
-        "https://*.vercel.app",
+        "https://jarvis-e5ulpzciu-sneekytchs-projects.vercel.app",
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = ["*"]
