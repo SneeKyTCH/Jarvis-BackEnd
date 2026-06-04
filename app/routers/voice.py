@@ -376,6 +376,48 @@ async def transcribe_with_language_detection(
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
+@router.get("/test-azure-config")
+async def test_azure_config():
+    """
+    Test endpoint to verify Azure Speech Services is configured
+    """
+    try:
+        api_key = settings.azure_speech_key
+        region = settings.azure_speech_region
+
+        if not api_key or not region:
+            return {
+                "status": "error",
+                "message": "Azure credentials not configured",
+                "api_key_set": bool(api_key),
+                "region": region or "not set"
+            }
+
+        # Try a simple test call to Azure
+        import requests
+        test_url = f"https://{region}.stt.speech.microsoft.com/cognitiveservices/v1"
+        test_headers = {
+            "Ocp-Apim-Subscription-Key": api_key,
+        }
+
+        response = requests.post(test_url, headers=test_headers, data=b"test", timeout=5)
+
+        return {
+            "status": "ok" if response.status_code in [200, 400, 415] else "error",
+            "message": f"Azure responded with status {response.status_code}",
+            "api_key_set": len(api_key) > 10,
+            "region": region,
+            "test_response": response.status_code
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "api_key_set": bool(settings.azure_speech_key),
+            "region": settings.azure_speech_region
+        }
+
+
 @router.post("/detect-language-and-transcribe")
 async def detect_language_and_transcribe(
     file: UploadFile = File(...),
