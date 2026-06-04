@@ -76,6 +76,26 @@ class VoiceInfo(BaseModel):
 
 # ─── Endpoints ───
 
+@router.post("/debug-upload")
+async def debug_upload(
+    audio_file: UploadFile = File(...),
+):
+    """
+    DEBUG: Test if file upload works
+    """
+    contents = await audio_file.read()
+    logger.info(f"DEBUG: Received file: {audio_file.filename}")
+    logger.info(f"DEBUG: File size: {len(contents)} bytes")
+    logger.info(f"DEBUG: Content-Type: {audio_file.content_type}")
+
+    return {
+        "received": True,
+        "filename": audio_file.filename,
+        "size": len(contents),
+        "content_type": audio_file.content_type,
+    }
+
+
 @router.post("/recognize", response_model=SpeechRecognitionResponse)
 async def recognize_speech(
     audio_file: UploadFile = File(...),
