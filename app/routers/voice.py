@@ -507,3 +507,156 @@ async def list_available_voices(authorization: Optional[str] = None):
         ]
 
     return voices
+
+
+@router.post("/voice-chat")
+async def voice_chat(
+    file: UploadFile = File(...),
+    conversation_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Full voice chat: transcribe audio → get AI response → speak response back
+
+    Returns: Audio file of AI's spoken response
+    """
+    import re
+    import asyncio
+    from fastapi.responses import FileResponse
+    from app.services import ChatService
+    from app.db import DatabaseSession
+
+    audio_file_path = None
+
+    try:
+        logger.info(f"Voice chat request: {file.filename}")
+
+        # Extract and validate token
+        user_id = None
+        if authorization:
+            parts = authorization.split(" ")
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+            else:
+                token = authorization
+
+            if token:
+                user_id, _ = AuthService.validate_token(token)
+                logger.info(f"Voice chat user: {user_id}")
+
+        # Verify OpenAI API key
+        if not settings.openai_api_key:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+
+        # Read audio file
+        audio_data = await file.read()
+        if not audio_data:
+            raise HTTPException(status_code=400, detail="Audio file is empty")
+
+        # Save to temporary file
+        suffix = "." + (file.filename.split(".")[-1] if file.filename and "." in file.filename else "webm")
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(audio_data)
+            audio_file_path = tmp.name
+            logger.info(f"Saved audio to temp file: {audio_file_path}")
+
+        # Step 1: Transcribe audio
+        logger.info("Step 1: Transcribing audio...")
+        loop = asyncio.get_event_loop()
+        transcribed_text, confidence = await loop.run_in_executor(
+            None,
+            lambda: VoiceService.recognize_speech(
+                audio_file_path=audio_file_path,
+                language="en",
+                user_id=user_id,
+            )
+        )
+
+        if not transcribed_text:
+            raise HTTPException(status_code=400, detail="Could not transcribe audio")
+
+        logger.info(f"Transcribed: {transcribed_text[:50]}...")
+
+        # Detect language from transcribed text
+        detected_lang = "en"
+        language_name = "English"
+        voice_id = "en-US-AriaNeural"
+
+        if re.search(r'[ăâîșț]', transcribed_text, re.IGNORECASE):
+            detected_lang = "ro"
+            language_name = "Română"
+            voice_id = "ro-RO-AlinaNeural"
+        elif re.search(r'[ñ]', transcribed_text, re.IGNORECASE):
+            detected_lang = "es"
+            language_name = "Español"
+            voice_id = "es-ES-AlvaroNeural"
+        elif re.search(r'[éèêàùç]', transcribed_text, re.IGNORECASE):
+            detected_lang = "fr"
+            language_name = "Français"
+            voice_id = "fr-FR-HenriNeural"
+
+        logger.info(f"Detected language: {language_name}")
+
+        # Step 2: Get AI response
+        logger.info("Step 2: Getting AI response...")
+        db = DatabaseSession()
+
+        try:
+            # Get or create conversation
+            if conversation_id:
+                conversation = ChatService.get_conversation(conversation_id, user_id, db)
+                if not conversation:
+                    raise HTTPException(status_code=404, detail="Conversation not found")
+            else:
+                conversation = ChatService.create_conversation(user_id, detected_lang, db)
+
+            # Send message to AI
+            ai_response = ChatService.send_message(
+                user_id=user_id,
+                conversation_id=conversation.id,
+                message_text=transcribed_text,
+                use_claude=True,
+                db=db,
+            )
+
+            if "error" in ai_response:
+                raise HTTPException(status_code=500, detail=ai_response["error"])
+
+            response_text = ai_response.get("content", "")
+            logger.info(f"AI response: {response_text[:50]}...")
+
+        finally:
+            db.close()
+
+        # Step 3: Synthesize AI response to speech
+        logger.info("Step 3: Synthesizing response to speech...")
+        audio_path, duration = VoiceService.synthesize_speech(
+            text=response_text,
+            language=detected_lang,
+            voice_id=voice_id,
+            user_id=user_id,
+        )
+
+        if not audio_path:
+            raise HTTPException(status_code=500, detail="Failed to synthesize speech")
+
+        logger.info(f"Synthesized audio: {audio_path} ({duration:.1f}s)")
+
+        # Return audio file as response
+        return FileResponse(
+            path=audio_path,
+            media_type="audio/mpeg",
+            filename=f"response_{uuid4().hex[:8]}.mp3",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Voice chat error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Voice chat failed: {str(e)[:100]}")
+    finally:
+        # Clean up temp audio file
+        if audio_file_path:
+            Path(audio_file_path).unlink(missing_ok=True)
+            logger.info(f"Cleaned up temp file: {audio_file_path}")
