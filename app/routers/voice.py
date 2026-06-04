@@ -615,7 +615,7 @@ async def voice_chat(
             client = OpenAI(api_key=settings.openai_api_key)
             completion = client.chat.completions.create(
                 model="gpt-4o-mini",
-                max_tokens=1024,
+                max_tokens=350,  # voice replies are spoken aloud; keep them short & fast
                 messages=[
                     {"role": "user", "content": transcribed_text}
                 ]
