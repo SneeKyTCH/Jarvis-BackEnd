@@ -600,9 +600,8 @@ async def voice_chat(
 
         # Step 2: Get AI response
         logger.info("Step 2: Getting AI response...")
-        db = DatabaseSession()
 
-        try:
+        with DatabaseSession() as db:
             # Get or create conversation
             if conversation_id:
                 conversation = ChatService.get_conversation(conversation_id, user_id, db)
@@ -625,9 +624,6 @@ async def voice_chat(
 
             response_text = ai_response.get("content", "")
             logger.info(f"AI response: {response_text[:50]}...")
-
-        finally:
-            db.close()
 
         # Step 3: Synthesize AI response to speech
         logger.info("Step 3: Synthesizing response to speech...")
