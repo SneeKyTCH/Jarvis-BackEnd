@@ -1,0 +1,62 @@
+# JARVIS Backend API v2.0 - Production Dependencies (June 2026)
+# Core Framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+pydantic==2.8.0
+pydantic-settings==2.4.0
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.13.3
+psycopg2-binary==2.9.10
+asyncpg==0.30.0
+
+# Async & Concurrency
+aiohttp==3.10.0
+httpx==0.27.0
+
+# AI/LLM
+anthropic>=0.28.0
+openai>=1.40.0
+
+# Voice & Audio
+elevenlabs>=0.3.0
+SpeechRecognition>=3.10.4
+sounddevice>=0.5.5
+scipy>=1.17.1
+
+# Web Search
+duckduckgo-search>=3.9.0
+requests>=2.32.0
+
+# Caching & Sessions
+redis>=5.0.0
+python-dotenv>=1.0.1
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+cryptography>=43.0.0
+
+# Language Detection
+langdetect>=1.0.9
+
+# Utilities & Logging
+python-multipart>=0.0.6
+python-dateutil>=2.8.2
+pytz>=2024.1
+
+# Development
+black==24.4.2
+ruff==0.5.5
+mypy==1.14.1
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+
+# Monitoring & Logging
+python-json-logger>=2.0.7
+
+# Optional: Cloud integrations (uncomment as needed)
+# boto3>=1.34.0  # AWS S3, Lambda, etc.
+# google-cloud-storage>=2.16.0  # GCP Cloud Storage
