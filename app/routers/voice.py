@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.db import get_db
 from app.services import VoiceService, AuthService
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
