@@ -117,13 +117,23 @@ class ChatService:
             history = [{"role": msg.role, "content": msg.content} for msg in messages]
             history.append({"role": "user", "content": message_text})
 
-            # Get AI response
-            if use_claude and claude_client:
-                ai_response = ChatService._claude_response(history)
-            elif openai_client:
-                ai_response = ChatService._openai_response(history)
-            else:
-                return {"error": "No AI service configured"}
+            # Get AI response - try Claude first, fallback to OpenAI
+            ai_response = None
+            if claude_client:
+                try:
+                    ai_response = ChatService._claude_response(history)
+                except Exception as e:
+                    logger.warning(f"Claude API failed: {str(e)}, falling back to OpenAI")
+
+            if not ai_response and openai_client:
+                try:
+                    ai_response = ChatService._openai_response(history)
+                except Exception as e:
+                    logger.error(f"OpenAI API failed: {str(e)}")
+                    return {"error": f"AI service error: {str(e)}"}
+
+            if not ai_response:
+                return {"error": "No AI service available"}
 
             # Save user message
             user_msg = Message(
