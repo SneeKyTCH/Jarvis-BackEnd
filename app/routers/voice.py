@@ -376,48 +376,6 @@ async def transcribe_with_language_detection(
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
-@router.get("/test-azure-config")
-async def test_azure_config():
-    """
-    Test endpoint to verify Azure Speech Services is configured
-    """
-    try:
-        api_key = settings.azure_speech_key
-        region = settings.azure_speech_region
-
-        if not api_key or not region:
-            return {
-                "status": "error",
-                "message": "Azure credentials not configured",
-                "api_key_set": bool(api_key),
-                "region": region or "not set"
-            }
-
-        # Try a simple test call to Azure
-        import requests
-        test_url = f"https://{region}.stt.speech.microsoft.com/cognitiveservices/v1"
-        test_headers = {
-            "Ocp-Apim-Subscription-Key": api_key,
-        }
-
-        response = requests.post(test_url, headers=test_headers, data=b"test", timeout=5)
-
-        return {
-            "status": "ok" if response.status_code in [200, 400, 415] else "error",
-            "message": f"Azure responded with status {response.status_code}",
-            "api_key_set": len(api_key) > 10,
-            "region": region,
-            "test_response": response.status_code
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e),
-            "api_key_set": bool(settings.azure_speech_key),
-            "region": settings.azure_speech_region
-        }
-
-
 @router.post("/detect-language-and-transcribe")
 async def detect_language_and_transcribe(
     file: UploadFile = File(...),
@@ -434,8 +392,8 @@ async def detect_language_and_transcribe(
     }
     """
     try:
-        import requests
-        from io import BytesIO
+        import azure.cognitiveservices.speech as speechsdk
+        import re
 
         logger.info(f"Auto-detect transcribe: {file.filename}")
 
@@ -452,39 +410,37 @@ async def detect_language_and_transcribe(
         if not audio_data:
             raise HTTPException(status_code=400, detail="Audio file is empty")
 
-        # Azure Speech-to-Text with auto language detection
-        url = f"https://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
+        # Create Azure Speech recognizer with audio from memory
+        speech_config = speechsdk.SpeechConfig(subscription=api_key, region=region)
+        audio_config = speechsdk.AudioConfig(use_default_microphone=False)
 
-        headers = {
-            "Ocp-Apim-Subscription-Key": api_key,
-            "Content-Type": f"audio/{file.content_type.split('/')[-1] if '/' in file.content_type else 'wav'}",
-        }
+        # Create in-memory audio from the blob
+        import io
+        audio_stream = speechsdk.audio.PushAudioInputStream()
+        audio_stream.write(audio_data)
+        audio_stream.close()
 
-        # Azure will attempt to recognize speech without language restriction
-        # Language will be detected from transcription
-        params = {}
+        # Create audio config from the stream
+        audio_config = speechsdk.AudioConfig(stream=audio_stream)
 
-        response = requests.post(
-            url,
-            headers=headers,
-            params=params,
-            data=audio_data,
-            timeout=30
-        )
+        # Create speech recognizer
+        speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
-        if response.status_code != 200:
-            error_detail = response.text if response.text else f"HTTP {response.status_code}"
-            logger.error(f"Azure Speech error: {response.status_code} - {error_detail}")
-            raise HTTPException(status_code=500, detail=f"Azure error: {error_detail[:100]}")
+        logger.info("Starting Azure speech recognition...")
+        result = speech_recognizer.recognize_once()
 
-        result = response.json()
-        transcribed_text = result.get("DisplayText", "")
-
-        if not transcribed_text:
+        if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+            transcribed_text = result.text
+            logger.info(f"Recognized: {transcribed_text}")
+        elif result.reason == speechsdk.ResultReason.NoMatch:
+            logger.warning("No speech detected")
             raise HTTPException(status_code=400, detail="No speech detected")
+        elif result.reason == speechsdk.ResultReason.Canceled:
+            cancellation = result.cancellation_details
+            logger.error(f"Speech Recognition canceled: {cancellation.reason} - {cancellation.error_details}")
+            raise HTTPException(status_code=500, detail=f"Azure error: {cancellation.error_details}")
 
         # Detect language from transcribed text using simple heuristics
-        import re
         detected_lang = "en"
         language_name = "English"
 
@@ -516,9 +472,6 @@ async def detect_language_and_transcribe(
 
     except HTTPException:
         raise
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Azure request error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Azure connection failed: {str(e)[:50]}")
     except Exception as e:
         logger.error(f"Auto-detect transcription error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)[:100]}")
