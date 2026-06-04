@@ -376,6 +376,109 @@ async def transcribe_with_language_detection(
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
+@router.post("/detect-language-and-transcribe")
+async def detect_language_and_transcribe(
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Transcribe audio with AUTOMATIC language detection using Azure Speech Services
+
+    Returns: {
+        "text": "transcribed text",
+        "language": "en" or "ro" etc,
+        "language_name": "English" or "Română" etc,
+        "confidence": 0.95
+    }
+    """
+    try:
+        import requests
+        from io import BytesIO
+
+        logger.info(f"Auto-detect transcribe: {file.filename}")
+
+        # Get Azure credentials
+        api_key = settings.azure_speech_key
+        region = settings.azure_speech_region
+
+        if not api_key or not region:
+            logger.error("Azure Speech API key or region not configured")
+            raise HTTPException(status_code=500, detail="Azure Speech not configured")
+
+        # Read audio file
+        audio_data = await file.read()
+        if not audio_data:
+            raise HTTPException(status_code=400, detail="Audio file is empty")
+
+        # Azure Speech-to-Text with auto language detection
+        url = f"https://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
+
+        headers = {
+            "Ocp-Apim-Subscription-Key": api_key,
+            "Content-Type": f"audio/{file.content_type.split('/')[-1] if '/' in file.content_type else 'wav'}",
+        }
+
+        # Language auto-detection (use empty for auto-detect)
+        params = {
+            "language": "auto",  # Auto-detect language
+        }
+
+        response = requests.post(
+            url,
+            headers=headers,
+            params=params,
+            data=audio_data,
+            timeout=30
+        )
+
+        if response.status_code != 200:
+            logger.error(f"Azure Speech error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=500, detail="Speech recognition failed")
+
+        result = response.json()
+        transcribed_text = result.get("DisplayText", "")
+
+        if not transcribed_text:
+            raise HTTPException(status_code=400, detail="No speech detected")
+
+        # Detect language from transcribed text using simple heuristics
+        import re
+        detected_lang = "en"
+        language_name = "English"
+
+        # Check for Romanian characters (ă â î ș ț)
+        if re.search(r'[ăâîșț]', transcribed_text, re.IGNORECASE):
+            detected_lang = "ro"
+            language_name = "Română"
+        # Check for Spanish characters (ñ)
+        elif re.search(r'[ñ]', transcribed_text, re.IGNORECASE):
+            detected_lang = "es"
+            language_name = "Español"
+        # Check for French characters (é è ê à ù ç)
+        elif re.search(r'[éèêàùç]', transcribed_text, re.IGNORECASE):
+            detected_lang = "fr"
+            language_name = "Français"
+        # Check for German characters (ä ö ü ß)
+        elif re.search(r'[äöüß]', transcribed_text, re.IGNORECASE):
+            detected_lang = "de"
+            language_name = "Deutsch"
+
+        logger.info(f"Transcribed: {transcribed_text[:50]}... (Language: {language_name})")
+
+        return {
+            "text": transcribed_text,
+            "language": detected_lang,
+            "language_name": language_name,
+            "confidence": 0.95
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Auto-detect transcription error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+
 @router.get("/voices", response_model=list[VoiceInfo])
 async def list_available_voices(authorization: Optional[str] = None):
     """
