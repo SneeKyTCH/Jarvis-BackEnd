@@ -418,10 +418,9 @@ async def detect_language_and_transcribe(
             "Content-Type": f"audio/{file.content_type.split('/')[-1] if '/' in file.content_type else 'wav'}",
         }
 
-        # Language auto-detection (use empty for auto-detect)
-        params = {
-            "language": "auto",  # Auto-detect language
-        }
+        # Azure will attempt to recognize speech without language restriction
+        # Language will be detected from transcription
+        params = {}
 
         response = requests.post(
             url,
