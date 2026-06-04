@@ -167,6 +167,65 @@ async def recognize_speech(
         raise HTTPException(status_code=500, detail="Speech recognition failed")
 
 
+@router.post("/speak")
+async def speak_text(
+    request: TextToSpeechRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Convert text to speech using Eleven Labs
+
+    Args:
+        request: TextToSpeechRequest with text, language, and optional voice_id
+        authorization: Bearer token (optional)
+
+    Returns: Audio stream (MP3)
+    """
+    try:
+        logger.info(f"Speak request: {request.text[:50]}...")
+
+        # Extract and validate token (optional)
+        user_id = None
+        if authorization:
+            token = None
+            parts = authorization.split(" ")
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+            else:
+                token = authorization
+
+            if token:
+                try:
+                    user_id, _ = AuthService.validate_token(token)
+                except Exception as e:
+                    logger.warning(f"Token validation failed: {str(e)}")
+
+        # Synthesize speech
+        audio_path, duration = VoiceService.synthesize_speech(
+            text=request.text,
+            language=request.language,
+            voice_id=request.voice_id or "George",
+            user_id=user_id,
+        )
+
+        if not audio_path:
+            raise HTTPException(status_code=500, detail="Text-to-speech failed")
+
+        # Read audio file and return as stream
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=audio_path,
+            media_type="audio/mpeg",
+            filename="response.mp3",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Speak error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Speech synthesis failed: {str(e)}")
+
+
 @router.post("/synthesize", response_model=TextToSpeechResponse)
 async def synthesize_speech(
     request: TextToSpeechRequest,
