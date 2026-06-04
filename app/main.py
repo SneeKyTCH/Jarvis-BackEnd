@@ -77,12 +77,15 @@ def create_app() -> FastAPI:
         return response
 
     # CORS - Allow cross-origin requests from web/mobile clients
+    logger.info(f"CORS Origins configured: {settings.cors_origins}")
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=settings.cors_allow_credentials,
-        allow_methods=settings.cors_allow_methods,
-        allow_headers=settings.cors_allow_headers,
+        allow_origin_regex=r"https://.*\.vercel\.app.*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # ─── API Routers ───

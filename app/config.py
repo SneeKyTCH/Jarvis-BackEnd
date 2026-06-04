@@ -59,8 +59,6 @@ class Settings(BaseSettings):
         "http://localhost:8081",
         "https://jarvis-web-dun-five.vercel.app",
         "https://jarvis-web-git-main-sneekytchs-projects.vercel.app",
-        "https://jarvis-ogxoa19lf-sneekytchs-projects.vercel.app",
-        "https://jarvis-e5ulpzciu-sneekytchs-projects.vercel.app",
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = ["*"]
