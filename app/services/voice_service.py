@@ -83,17 +83,17 @@ class VoiceService:
     def synthesize_speech(
         text: str,
         language: str = "en",
-        voice_id: str = "George",
+        voice_id: str = "en-US-AriaNeural",
         user_id: Optional[str] = None,
         db: Session = None,
     ) -> Tuple[Optional[str], float]:
         """
-        Convert text to speech audio
+        Convert text to speech audio using Azure Text-to-Speech
 
         Args:
             text: Text to synthesize
             language: Language code (e.g., 'ro', 'en')
-            voice_id: Eleven Labs voice ID
+            voice_id: Azure voice name (e.g., 'en-US-AriaNeural')
             user_id: User ID for caching
             db: Database session
 
@@ -115,28 +115,37 @@ class VoiceService:
 
         try:
             import requests
-            from io import BytesIO
 
-            api_key = settings.elevenlabs_api_key
-            if not api_key:
-                logger.error("Eleven Labs API key not configured")
+            api_key = settings.azure_speech_key
+            region = settings.azure_speech_region
+
+            if not api_key or not region:
+                logger.error("Azure Speech API key or region not configured")
                 return None, 0.0
 
-            # Call Eleven Labs API
-            url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+            # Azure Text-to-Speech endpoint
+            url = f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
             headers = {
-                "xi-api-key": api_key,
-                "Content-Type": "application/json",
-            }
-            data = {
-                "text": text,
-                "model_id": "eleven_turbo_v2_5",
+                "Ocp-Apim-Subscription-Key": api_key,
+                "Content-Type": "application/ssml+xml",
+                "X-Microsoft-OutputFormat": "audio-16khz-32kbitrate-mono-mp3",
             }
 
-            response = requests.post(url, json=data, headers=headers, timeout=30)
+            # Build SSML for better control
+            ssml_body = f"""
+            <speak version='1.0' xml:lang='{language}'>
+                <voice name='{voice_id}'>
+                    <prosody rate='1.0' pitch='0%'>
+                        {text}
+                    </prosody>
+                </voice>
+            </speak>
+            """
+
+            response = requests.post(url, headers=headers, data=ssml_body, timeout=30)
 
             if response.status_code != 200:
-                logger.error(f"Eleven Labs API error: {response.status_code}")
+                logger.error(f"Azure Speech API error: {response.status_code} - {response.text}")
                 return None, 0.0
 
             # Save audio to temporary file
@@ -159,11 +168,11 @@ class VoiceService:
                     db=db,
                 )
 
-            logger.info(f"Speech synthesized: {text[:30]}... ({duration_seconds:.1f}s)")
+            logger.info(f"Speech synthesized via Azure: {text[:30]}... ({duration_seconds:.1f}s)")
             return audio_file_path, duration_seconds
 
         except Exception as e:
-            logger.error(f"Text-to-speech error: {str(e)}")
+            logger.error(f"Text-to-speech error: {str(e)}", exc_info=True)
             return None, 0.0
 
     @staticmethod

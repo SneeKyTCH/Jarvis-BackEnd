@@ -36,9 +36,13 @@ class Settings(BaseSettings):
     preferred_model: str = "claude"  # "claude" or "openai"
 
     # ─── Voice & Audio ───
+    # Azure Text-to-Speech
+    azure_speech_key: str = ""
+    azure_speech_region: str = "westeurope"
+    # Legacy (deprecated)
     elevenlabs_api_key: str = ""
     google_speech_api_key: str = ""
-    default_voice_id: str = "George"  # Eleven Labs voice
+    default_voice_id: str = "en-US-AriaNeural"  # Azure voice
     speech_recognition_language: str = "ro"  # Default: Romanian
 
     # ─── Web Search ───
