@@ -16,9 +16,20 @@ logger = logging.getLogger(__name__)
 
 def get_database_url() -> str:
     """Get appropriate database URL based on configuration"""
+    import os
 
-    # For local development, default to SQLite
-    # PostgreSQL support can be enabled when deployed with proper async drivers
+    # Check for DATABASE_URL environment variable (Render, Heroku, etc.)
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        logger.info("Using PostgreSQL database from DATABASE_URL")
+        return db_url
+
+    # Fallback to config settings
+    if settings.database_url and "postgresql" in settings.database_url:
+        logger.info("Using PostgreSQL database from settings")
+        return settings.database_url
+
+    # Default to SQLite for local development
     logger.info("Using SQLite database (local development)")
     return settings.sqlite_url
 
