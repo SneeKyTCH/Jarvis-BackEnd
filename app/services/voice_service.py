@@ -42,29 +42,41 @@ class VoiceService:
         """
         try:
             from openai import OpenAI
+            from pathlib import Path
 
             if not settings.openai_api_key:
                 logger.error("OpenAI API key not configured")
                 return None, 0.0
 
+            # Check if file exists
+            if not Path(audio_file_path).exists():
+                logger.error(f"Audio file not found: {audio_file_path}")
+                return None, 0.0
+
             client = OpenAI(api_key=settings.openai_api_key)
+
+            logger.info(f"Transcribing audio file: {audio_file_path}")
 
             # Open audio file and transcribe
             with open(audio_file_path, "rb") as audio_file:
+                # Whisper doesn't need explicit language parameter
+                # It auto-detects, but we can hint it
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_file,
-                    language=language if language != "ro" else "ro",
                 )
 
             text = transcript.text
             confidence = 0.95  # Whisper doesn't return confidence, estimate high
 
-            logger.info(f"Speech recognized: {text[:50]}... (language: {language})")
+            logger.info(f"Speech recognized: {text[:100]}... (language: {language})")
             return text, confidence
 
+        except FileNotFoundError as e:
+            logger.error(f"Audio file not found: {str(e)}")
+            return None, 0.0
         except Exception as e:
-            logger.error(f"Speech recognition error: {str(e)}")
+            logger.error(f"Speech recognition error: {str(e)}", exc_info=True)
             return None, 0.0
 
     @staticmethod

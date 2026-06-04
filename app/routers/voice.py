@@ -221,49 +221,56 @@ async def transcribe_with_language_detection(
     """
     Convert speech to text WITH automatic language detection
 
-    Like recognize_speech but also detects language from audio.
-
     Args:
         audio_file: Audio file (WebM, WAV, MP3, OGG, FLAC)
-        authorization: Bearer token in Authorization header
+        authorization: Bearer token in Authorization header (optional)
 
     Returns: Transcribed text with detected language and confidence
     """
-    logger.info(f"Transcribe with language detection: {audio_file.filename}")
-
-    # Extract and validate token (optional)
-    user_id = None
-    if authorization:
-        token = None
-        parts = authorization.split(" ")
-        if len(parts) == 2 and parts[0].lower() == "bearer":
-            token = parts[1]
-        else:
-            token = authorization
-
-        if token:
-            try:
-                user_id, _ = AuthService.validate_token(token)
-            except Exception as e:
-                logger.warning(f"Token validation failed: {str(e)}")
-
-    # Validate file size
-    contents = await audio_file.read()
-    if len(contents) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large (max 25MB)")
-
-    # Save to temporary file
     try:
-        # Use original extension if available, otherwise webm
-        suffix = "." + (audio_file.filename.split(".")[-1] if audio_file.filename else "webm")
+        logger.info(f"Transcribe request: {audio_file.filename} (size: {audio_file.size})")
+
+        # Extract and validate token (optional)
+        user_id = None
+        if authorization:
+            token = None
+            parts = authorization.split(" ")
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+            else:
+                token = authorization
+
+            if token:
+                try:
+                    user_id, _ = AuthService.validate_token(token)
+                    logger.info(f"Token valid for user: {user_id}")
+                except Exception as e:
+                    logger.warning(f"Token validation failed: {str(e)}")
+
+        # Validate file size
+        contents = await audio_file.read()
+        logger.info(f"Audio file size: {len(contents)} bytes")
+
+        if len(contents) == 0:
+            raise HTTPException(status_code=400, detail="Audio file is empty")
+
+        if len(contents) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="File too large (max 25MB)")
+
+        # Save to temporary file
+        suffix = "." + (audio_file.filename.split(".")[-1] if audio_file.filename and "." in audio_file.filename else "webm")
+        logger.info(f"Using file suffix: {suffix}")
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(contents)
             tmp_path = tmp.name
+            logger.info(f"Saved to temp file: {tmp_path}")
 
-        # Transcribe with auto language detection (let OpenAI Whisper detect)
+        # Transcribe with auto language detection
+        logger.info(f"Starting transcription with OpenAI Whisper...")
         text, confidence = VoiceService.recognize_speech(
             audio_file_path=tmp_path,
-            language="en",  # OpenAI Whisper auto-detects if we don't specify
+            language="en",
             user_id=user_id,
         )
 
@@ -273,6 +280,7 @@ async def transcribe_with_language_detection(
         if not text:
             raise HTTPException(status_code=400, detail="Speech not recognized")
 
+        logger.info(f"Transcription complete: {text[:50]}...")
         return {
             "text": text,
             "language": "auto",
@@ -283,8 +291,8 @@ async def transcribe_with_language_detection(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Transcription error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Transcription failed")
+        logger.error(f"Transcription error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
 @router.get("/voices", response_model=list[VoiceInfo])
