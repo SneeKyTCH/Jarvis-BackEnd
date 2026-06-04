@@ -608,22 +608,37 @@ async def voice_chat(
         logger.info("Step 2: Getting AI response...")
 
         # Get AI response directly (don't store voice chat in conversation history)
-        from anthropic import Anthropic
+        # Primary: OpenAI (same provider as text chat). Fallback: Anthropic.
+        response_text = None
         try:
-            client = Anthropic(api_key=settings.anthropic_api_key)
-            message = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.openai_api_key)
+            completion = client.chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=1024,
                 messages=[
                     {"role": "user", "content": transcribed_text}
                 ]
             )
-            response_text = message.content[0].text
-            logger.info(f"AI response: {response_text[:50]}...")
+            response_text = completion.choices[0].message.content
+            logger.info(f"AI response (OpenAI): {response_text[:50]}...")
         except Exception as e:
-            logger.error(f"AI response error: {str(e)}")
-            raise HTTPException(status_code=500, detail="Failed to get AI response")
-            logger.info(f"AI response: {response_text[:50]}...")
+            logger.warning(f"OpenAI voice response failed: {str(e)}, trying Anthropic...")
+            try:
+                from anthropic import Anthropic
+                client = Anthropic(api_key=settings.anthropic_api_key)
+                message = client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=1024,
+                    messages=[
+                        {"role": "user", "content": transcribed_text}
+                    ]
+                )
+                response_text = message.content[0].text
+                logger.info(f"AI response (Anthropic): {response_text[:50]}...")
+            except Exception as e2:
+                logger.error(f"AI response error: {str(e2)}")
+                raise HTTPException(status_code=500, detail="Failed to get AI response")
 
         # Step 3: Synthesize AI response to speech
         logger.info("Step 3: Synthesizing response to speech...")
