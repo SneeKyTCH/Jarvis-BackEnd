@@ -436,11 +436,17 @@ async def detect_language_and_transcribe(
             logger.warning(f"No speech detected or transcription failed")
             raise HTTPException(status_code=400, detail="No speech detected in audio")
 
-        # Detect language from transcribed text using character patterns
+        # Detect language from transcribed text using multiple heuristics
         detected_lang = "en"
         language_name = "English"
 
-        if re.search(r'[ăâîșț]', transcribed_text, re.IGNORECASE):
+        text_lower = transcribed_text.lower()
+
+        # Romanian detection - special characters + common words
+        romanian_chars = bool(re.search(r'[ăâîșț]', transcribed_text, re.IGNORECASE))
+        romanian_words = any(word in text_lower for word in ['sunt', 'este', 'sunt', 'ce', 'care', 'cum', 'unde', 'cand', 'de', 'la', 'pe', 'cu', 'si', 'sa', 'pentru', 'ca', 'dar', 'sau', 'nu', 'daca', 'mai', 'acum', 'aici', 'asa', 'foarte', 'putine', 'vorbesc', 'spun', 'zic', 'fiu', 'esti', 'voi', 'lui'])
+
+        if romanian_chars or romanian_words:
             detected_lang = "ro"
             language_name = "Română"
         elif re.search(r'[ñ]', transcribed_text, re.IGNORECASE):
