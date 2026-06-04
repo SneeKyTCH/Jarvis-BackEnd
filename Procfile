@@ -1,1 +1,1 @@
-web: gunicorn -w 4 -b 0.0.0.0:$PORT -k uvicorn.workers.UvicornWorker app.main:app
+web: cd jarvis-backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4
