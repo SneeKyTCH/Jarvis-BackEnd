@@ -172,43 +172,32 @@ async def send_message(
         raise HTTPException(status_code=401, detail=message)
 
     # Get conversation or create new one
-    if request.conversation_id:
-        conversation = ChatService.get_conversation(request.conversation_id, user_id, db)
+    if conversation_id:
+        conversation = ChatService.get_conversation(conversation_id, user_id, db)
         if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
     else:
-        conversation = ChatService.create_conversation(user_id, request.language or "en", db)
+        conversation = ChatService.create_conversation(user_id, language or "en", db)
 
-    # Save user message
-    user_msg = ChatService.add_message(
-        conversation_id=conversation.id,
-        role="user",
-        content=request.message,
-        db=db,
-    )
-
-    # Get AI response
-    ai_response = await ChatService.get_ai_response(
-        message=request.message,
-        conversation_id=conversation.id,
+    # Send message to AI and get response
+    result = ChatService.send_message(
         user_id=user_id,
-        language=request.language or conversation.language,
+        conversation_id=conversation.id,
+        message_text=message,
+        use_claude=True,
         db=db,
     )
 
-    # Get the saved AI response message (just added by service)
-    ai_msg = db.query(Message).filter(
-        Message.conversation_id == conversation.id,
-        Message.role == "assistant",
-    ).order_by(Message.created_at.desc()).first()
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
 
     return {
-        "conversation_id": conversation.id,
-        "message_id": ai_msg.id if ai_msg else str(uuid4().hex[:8]),
-        "response": ai_response,
-        "language": conversation.language,
-        "timestamp": ai_msg.created_at.isoformat() if ai_msg else "",
-        "tokens_used": ai_msg.tokens_used if ai_msg else None,
+        "conversation_id": result.get("id", conversation.id),
+        "message_id": result.get("id"),
+        "response": result.get("content", ""),
+        "language": language or "en",
+        "timestamp": result.get("timestamp", ""),
+        "tokens_used": 0,
     }
 
 
