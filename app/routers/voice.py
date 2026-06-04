@@ -607,28 +607,22 @@ async def voice_chat(
         # Step 2: Get AI response
         logger.info("Step 2: Getting AI response...")
 
-        with DatabaseSession() as db:
-            # Get or create conversation
-            if conversation_id:
-                conversation = ChatService.get_conversation(conversation_id, user_id, db)
-                if not conversation:
-                    raise HTTPException(status_code=404, detail="Conversation not found")
-            else:
-                conversation = ChatService.create_conversation(user_id, detected_lang, db)
-
-            # Send message to AI
-            ai_response = ChatService.send_message(
-                user_id=user_id,
-                conversation_id=conversation.id,
-                message_text=transcribed_text,
-                use_claude=True,
-                db=db,
+        # Get AI response directly (don't store voice chat in conversation history)
+        from anthropic import Anthropic
+        try:
+            client = Anthropic(api_key=settings.anthropic_api_key)
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                messages=[
+                    {"role": "user", "content": transcribed_text}
+                ]
             )
-
-            if "error" in ai_response:
-                raise HTTPException(status_code=500, detail=ai_response["error"])
-
-            response_text = ai_response.get("content", "")
+            response_text = message.content[0].text
+            logger.info(f"AI response: {response_text[:50]}...")
+        except Exception as e:
+            logger.error(f"AI response error: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to get AI response")
             logger.info(f"AI response: {response_text[:50]}...")
 
         # Step 3: Synthesize AI response to speech
