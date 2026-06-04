@@ -77,23 +77,16 @@ def create_app() -> FastAPI:
         return response
 
     # CORS - Allow cross-origin requests from web/mobile clients
-    logger.info(f"CORS Origins configured: {settings.cors_origins}")
+    logger.info(f"CORS Origins: {settings.cors_origins}")
+    logger.info(f"CORS Regex: {settings.cors_origin_regex}")
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://localhost:8080",
-            "http://localhost:8081",
-            "https://jarvis-web-dun-five.vercel.app",
-            "https://jarvis-web-git-main-sneekytchs-projects.vercel.app",
-            "https://jarvis-ogxoa19lf-sneekytchs-projects.vercel.app",
-            "https://jarvis-e5ulpzciu-sneekytchs-projects.vercel.app",
-            "https://jarvis-b7rf2kgs3-sneekytchs-projects.vercel.app",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_origin_regex,
+        allow_credentials=settings.cors_allow_credentials,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
     )
 
     # ─── API Routers ───
