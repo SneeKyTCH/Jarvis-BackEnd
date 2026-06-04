@@ -431,8 +431,9 @@ async def detect_language_and_transcribe(
         )
 
         if response.status_code != 200:
-            logger.error(f"Azure Speech error: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=500, detail="Speech recognition failed")
+            error_detail = response.text if response.text else f"HTTP {response.status_code}"
+            logger.error(f"Azure Speech error: {response.status_code} - {error_detail}")
+            raise HTTPException(status_code=500, detail=f"Azure error: {error_detail[:100]}")
 
         result = response.json()
         transcribed_text = result.get("DisplayText", "")
@@ -473,9 +474,12 @@ async def detect_language_and_transcribe(
 
     except HTTPException:
         raise
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Azure request error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Azure connection failed: {str(e)[:50]}")
     except Exception as e:
         logger.error(f"Auto-detect transcription error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)[:100]}")
 
 
 @router.get("/voices", response_model=list[VoiceInfo])
