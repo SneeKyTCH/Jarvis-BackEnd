@@ -29,7 +29,7 @@ class VoiceService:
         db: Session = None,
     ) -> Tuple[Optional[str], float]:
         """
-        Convert speech audio to text
+        Convert speech audio to text using OpenAI Whisper
 
         Args:
             audio_file_path: Path to audio file
@@ -41,29 +41,27 @@ class VoiceService:
             (transcribed_text, confidence_score)
         """
         try:
-            import speech_recognition as sr
+            from openai import OpenAI
 
-            recognizer = sr.Recognizer()
-
-            # Load audio file
-            with sr.AudioFile(audio_file_path) as source:
-                audio = recognizer.record(source)
-
-            # Transcribe with specified language
-            try:
-                text = recognizer.recognize_google(audio, language=language)
-                confidence = 0.95  # Google doesn't return confidence, estimate high
-
-                logger.info(f"Speech recognized: {text[:50]}... (language: {language})")
-                return text, confidence
-
-            except sr.UnknownValueError:
-                logger.warning("Speech not recognized")
+            if not settings.openai_api_key:
+                logger.error("OpenAI API key not configured")
                 return None, 0.0
 
-            except sr.RequestError as e:
-                logger.error(f"Speech recognition API error: {str(e)}")
-                return None, 0.0
+            client = OpenAI(api_key=settings.openai_api_key)
+
+            # Open audio file and transcribe
+            with open(audio_file_path, "rb") as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    language=language if language != "ro" else "ro",
+                )
+
+            text = transcript.text
+            confidence = 0.95  # Whisper doesn't return confidence, estimate high
+
+            logger.info(f"Speech recognized: {text[:50]}... (language: {language})")
+            return text, confidence
 
         except Exception as e:
             logger.error(f"Speech recognition error: {str(e)}")
